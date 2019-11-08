@@ -18,7 +18,7 @@ namespace InfiniteAccessories
                 InfiniteAccessories.Harmony.Patch(method, null, null, new HarmonyMethod(methodInfo_RemoveRangeCheck));
 
             var methodInfo_FindIterator = AccessTools.Method(typeof(RemoveRangeChecks), nameof(FindIterator));
-            var methodInfo_ChangeAccessoryAsync = AccessTools.Method(typeof(ChaControl), nameof(ChaControl.ChangeAccessoryAsync));
+            var methodInfo_ChangeAccessoryAsync = AccessTools.Method(typeof(ChaControl), nameof(ChaControl.ChangeAccessoryAsync), new[] { typeof(int), typeof(int), typeof(int), typeof(string), typeof(bool), typeof(bool) });
             InfiniteAccessories.Harmony.Patch(methodInfo_ChangeAccessoryAsync, null, null, new HarmonyMethod(methodInfo_FindIterator));
         }
 
@@ -27,7 +27,6 @@ namespace InfiniteAccessories
             AccessTools.Method(typeof(ChaControl), nameof(ChaControl.ChangeAccessoryColor)),
             AccessTools.Method(typeof(ChaControl), nameof(ChaControl.ChangeAccessoryParent)),
             AccessTools.Method(typeof(ChaControl), nameof(ChaControl.GetAccessoryDefaultColor)),
-            AccessTools.Method(typeof(ChaControl), nameof(ChaControl.GetAccessoryDefaultParentStr)),
             AccessTools.Method(typeof(ChaControl), nameof(ChaControl.IsAccessory)),
             AccessTools.Method(typeof(ChaControl), nameof(ChaControl.SetAccessoryDefaultColor)),
             AccessTools.Method(typeof(ChaControl), nameof(ChaControl.SetAccessoryPos)),
@@ -53,15 +52,19 @@ namespace InfiniteAccessories
         {
             foreach(var code in instructions)
             {
-                if(code.opcode == OpCodes.Newobj && code.operand is MethodInfo methodInfo)
+                if(code.opcode == OpCodes.Newobj)
                 {
                     var patch = AccessTools.Method(typeof(RemoveRangeChecks), nameof(IteratorPatch));
-                    var target = AccessTools.Method(methodInfo.DeclaringType, "MoveNext");
+                    var targetType = Traverse.Create(code.operand).Property("DeclaringType").GetValue<Type>();
+                    var target = AccessTools.Method(targetType, "MoveNext");
                     InfiniteAccessories.Harmony.Patch(target, null, null, new HarmonyMethod(patch));
-                    break;
+                }
+                else
+                {
+                    InfiniteAccessories.Logger.LogError($"Could not find iterator from method {nameof(ChaControl.ChangeAccessoryAsync)}");
                 }
 
-                InfiniteAccessories.Logger.LogError($"Could not find iterator from method {nameof(ChaControl.ChangeAccessoryAsync)}");
+                break;
             }
 
             return instructions;
@@ -70,22 +73,30 @@ namespace InfiniteAccessories
         private static IEnumerable<CodeInstruction> IteratorPatch(IEnumerable<CodeInstruction> instructions)
         {
             bool intFound = false;
+            bool patched = false;
 
             foreach(var code in instructions)
             {
-                if(code.opcode == OpCodes.Ldc_I4_S && code.operand == (object)19)
+                if(code.opcode == OpCodes.Ldc_I4_S && (sbyte)code.operand == 19)
+                {
                     intFound = true;
+                    InfiniteAccessories.Logger.LogInfo("Marker found in iterator");
+                }
 
                 if(intFound)
                 {
-                    if(code.opcode == OpCodes.Brtrue)
+                    if(code.opcode == OpCodes.Br)
                     {
-                        code.opcode = OpCodes.Br;
+                        code.opcode = OpCodes.Nop;
                         InfiniteAccessories.Logger.LogInfo($"Iterator patched in {nameof(ChaControl.ChangeAccessoryAsync)}");
+                        patched = true;
                         break;
                     }
                 }
             }
+
+            if(!patched)
+                InfiniteAccessories.Logger.LogInfo("Could not patch iterator");
 
             return instructions;
         }
